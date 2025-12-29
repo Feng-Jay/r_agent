@@ -1,12 +1,12 @@
 use async_trait::async_trait;
+use crate::model::schema::{LLMResponse, Message};
 
 #[async_trait]
 pub trait BaseModel {
-    async fn call(&self, user_prompt: &str, system_prompt: Option<&str>) -> String;
+    async fn call(&self, user_prompt: &Message) -> LLMResponse;
     async fn call_with_history(
         &self,
         user_prompt: &str,
-        history: Vec<&str>,
-        system_prompt: Option<&str>,
-    ) -> String;
+        history: &Vec<Message>
+    ) -> LLMResponse;
 }

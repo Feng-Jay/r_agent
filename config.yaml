@@ -1,5 +1,6 @@
-debug: true
-
+log_level: debug
+log_dir: ./logs
+log_file: r_agent.log
 summary_model: gpt-4o-mini
 
 models:

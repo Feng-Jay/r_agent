@@ -2,6 +2,10 @@ use std::{collections::HashMap, env};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use serde::Deserialize;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_appender::{rolling, non_blocking::WorkerGuard};
+use once_cell::sync::OnceCell;
+static LOG_GUARD: OnceCell<WorkerGuard> = OnceCell::new();
 
 pub fn get_config_file_path() -> PathBuf {
     env::var("R_AGENT_CONFIG_FILE")
@@ -15,7 +19,9 @@ pub fn get_config_file_path() -> PathBuf {
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    pub debug: bool,
+    pub log_level: String,
+    pub log_dir: String,
+    pub log_file: String,
     pub models: HashMap<String, ModelConfig>,
     pub summary_model: String,
 }
@@ -45,9 +51,23 @@ pub fn load_config(file: Option<&str>) -> Config {
     let config_content = std::fs::read_to_string(&config_path)
                                 .with_context(|| format!("Failed to read config file: {}", config_path.display()))
                                 .unwrap();
-    let cfg = serde_yml::from_str(&config_content)
+    let cfg: Config = serde_yml::from_str(&config_content)
                                 .with_context(|| format!("Failed to parse config file: {}", config_path.display()))
                                 .unwrap();
+    // init the logging
+    LOG_GUARD.get_or_init(|| 
+        {
+            let appender = rolling::never(cfg.log_dir.clone(), cfg.log_file.clone());
+            let (writer, guard) = tracing_appender::non_blocking(appender);
+            let filter = EnvFilter::new(cfg.log_level.clone());
+            let _ = fmt()
+                        .with_env_filter(filter)
+                        .with_writer(writer)
+                        .with_ansi(false)
+                        .init();
+            guard
+        });
+    // return the config
     cfg
 }
 
@@ -57,6 +77,7 @@ mod tests {
     fn test_load_config() {
         let config = load_config(None);
         println!("{:?}", config);
+        tracing::debug!("Config loaded successfully: {:?}", config);
         assert!(config.models.len() > 0);
     }
 }
