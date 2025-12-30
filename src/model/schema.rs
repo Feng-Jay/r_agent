@@ -1,7 +1,15 @@
+use std::fmt;
+
 #[derive(Debug)]
 pub struct Message {
     pub role: Role,
     pub content: String,
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.role, self.content)
+    }
 }
 
 impl Message {
@@ -40,6 +48,18 @@ pub enum Role{
     USER,
     ASSISTANT,
     TOOL
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let role_str = match self {
+            Role::SYSTEM => "system",
+            Role::USER => "user",
+            Role::ASSISTANT => "assistant",
+            Role::TOOL => "tool",
+        };
+        write!(f, "{}", role_str)
+    }
 }
 
 #[derive(Debug)]

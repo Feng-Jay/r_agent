@@ -8,6 +8,7 @@ use crate::{config::config::{Config, ModelConfig},
             model::{base::BaseModel},
             model::schema::{LLMResponse, Message, Role, Usage}};
 
+
 pub struct Litellm_Model{
     model_name: String,
     config: ModelConfig,
@@ -15,18 +16,21 @@ pub struct Litellm_Model{
 }
 
 impl Litellm_Model {
-    pub fn new(model_name:&str, settings: ModelConfig) -> Self {
+    pub fn new(model_name:&str, settings: ModelConfig, system_prompt: String) -> Self {
         let api_key = settings.api_key.as_str();
 
-        let llm_builder = LLMBuilder::new()
+        let mut llm_builder = LLMBuilder::new()
                                 .backend(LLMBackend::OpenAI)
                                 .api_key(api_key)
                                 .model(model_name);
         
-        let llm_builder = match settings.base_url.as_deref(){
-            Some(base_url) => llm_builder.base_url(base_url),
-            None => llm_builder,
-        };
+        if system_prompt.len() > 0 {
+            llm_builder = llm_builder.system(system_prompt);
+        }
+
+        if let Some(base_url) = settings.base_url.as_deref() {
+            llm_builder = llm_builder.base_url(base_url);
+        }
         
         let llm = llm_builder
                                 .build()
@@ -102,7 +106,7 @@ impl BaseModel for Litellm_Model {
 }
 
 
-
+// ------------------ Unit Test Module ------------------
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,7 +117,7 @@ mod tests {
         let config = load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone());
+        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
         let messages = vec![
             ChatMessage::user().content("You are a helpful assistant.").build(),
             ChatMessage::user().content("Hello, how about the weather of NY today").build(),
@@ -127,7 +131,7 @@ mod tests {
         let config = load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone());
+        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
         let user_prompt = "Hello, how about the weather of NY today";
         let out = litellm_model.call(&Message::user(user_prompt)).await;
         println!("\nOutput: {:?}", out);
@@ -138,7 +142,7 @@ mod tests {
         let config = load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone());
+        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
         let user_prompt = "Can you give me a summary of our previous conversation?";
         let history = vec![
             Message::user("Hello, how about the weather of NY today"),

@@ -2,6 +2,7 @@ pub mod model;
 pub mod config;
 pub mod agent;
 pub mod memory;
+pub mod prompt;
 
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing::{debug, info};
