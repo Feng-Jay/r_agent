@@ -6,7 +6,6 @@ pub trait BaseModel {
     async fn call(&self, user_prompt: &Message) -> LLMResponse;
     async fn call_with_history(
         &self,
-        user_prompt: &str,
-        history: &Vec<Message>
+        history: Vec<&Message>
     ) -> LLMResponse;
 }

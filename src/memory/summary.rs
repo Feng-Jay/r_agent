@@ -1,9 +1,8 @@
 
 use anyhow::Context;
-use serde_json::Value;
 use std::path::PathBuf;
 use serde::Deserialize;
-use std::{alloc::System, fs};
+use std::fs;
 use async_trait::async_trait;
 use tiktoken_rs::{get_bpe_from_model, o200k_base};
 use crate::{memory::base::BaseMemory, 
@@ -36,10 +35,10 @@ struct Summary {
 }
 
 impl SummaryMemory {
-    pub fn new(task_id: &str, model_str: &str, reserve_ratio: f32, summary_model: Litellm_Model, max_tokens: usize, workspace_path: &str) -> Self {
+    pub fn new(task_id: &str, reserve_ratio: f32, summary_model: Litellm_Model, max_tokens: usize, workspace_path: &str) -> Self {
         let mut ret = SummaryMemory {
             task_id: task_id.to_string(),
-            model_str: model_str.to_string(),
+            model_str: summary_model.model_name.clone(),
             reserve_ratio,
             summary_model: summary_model,
             max_tokens,
@@ -273,7 +272,7 @@ mod tests {
         let model_config = config.models.get(model_name).unwrap();
         let summary_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
 
-        let mut memory = SummaryMemory::new("test_task", model_name, 0.2, summary_model, 100, "./workspace");
+        let mut memory = SummaryMemory::new("test_task", 0.2, summary_model, 100, "./workspace");
         for i in 0..15 {
             let content = format!("This is test message number {}. {}", i, "A".repeat(50));
             memory.add(Message::user(&content)).await;

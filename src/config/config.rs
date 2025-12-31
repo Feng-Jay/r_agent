@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env};
 use anyhow::Context;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use serde::Deserialize;
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_appender::{rolling, non_blocking::WorkerGuard};
@@ -72,10 +72,9 @@ pub fn load_config(file: Option<&str>) -> Config {
 }
 
 mod tests {
-    use super::*;
     #[test]
     fn test_load_config() {
-        let config = load_config(None);
+        let config = super::load_config(None);
         println!("{:?}", config);
         tracing::debug!("Config loaded successfully: {:?}", config);
         assert!(config.models.len() > 0);

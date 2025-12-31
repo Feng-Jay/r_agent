@@ -10,7 +10,7 @@ use crate::{config::config::{Config, ModelConfig},
 
 
 pub struct Litellm_Model{
-    model_name: String,
+    pub model_name: String,
     config: ModelConfig,
     llm: Box<dyn LLMProvider>
 }
@@ -84,22 +84,22 @@ impl Litellm_Model {
 #[async_trait]
 impl BaseModel for Litellm_Model {
     async fn call(&self, user_prompt: &Message) -> LLMResponse {
-        let history = Vec::new();
-        self.call_with_history(&user_prompt.content, &history).await
+        let mut history = Vec::new();
+        history.push(user_prompt);
+        self.call_with_history(history).await
     }
 
     async fn call_with_history(
             &self,
-            user_prompt: &str,
-            history: &Vec<Message>,
+            history: Vec<&Message>,
         ) -> LLMResponse {
         let mut messages = Vec::new();
         for msg in history {
             let chat_msg = self.build_message(&msg.role, &msg.content);
             messages.push(chat_msg);
         }
-        let user_msg = self.build_message(&Role::USER, user_prompt);
-        messages.push(user_msg);
+        // let user_msg = self.build_message(&Role::USER, user_prompt);
+        // messages.push(user_msg);
         let llm_response = self._do_call(&messages).await;
         llm_response
     }
@@ -143,12 +143,13 @@ mod tests {
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
         let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
-        let user_prompt = "Can you give me a summary of our previous conversation?";
         let history = vec![
             Message::user("Hello, how about the weather of NY today"),
             Message::assistant("The weather in NY today is sunny with a high of 75°F."),
+            Message::user("Can you give me a summary of our previous conversation?")
         ];
-        let out = litellm_model.call_with_history(user_prompt, &history).await;
+        let history_refs: Vec<&Message> = history.iter().collect();
+        let out = litellm_model.call_with_history(history_refs).await;
         println!("\nOutput: {:?}", out);
     }
 }
