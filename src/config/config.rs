@@ -31,6 +31,8 @@ pub struct ModelConfig {
     pub api_key: String,
     pub base_url: Option<String>,
     pub cost: Option<Cost>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

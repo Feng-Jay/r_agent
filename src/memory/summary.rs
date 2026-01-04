@@ -45,7 +45,7 @@ impl SummaryMemory {
             workspace_path: PathBuf::from(workspace_path).join(task_id),
             messages: Vec::new(),
             token_counts: Vec::new(),
-            summary: Message { role: SYSTEM, content: String::new()},
+            summary: Message{ role: SYSTEM, content: String::new(), tool_calls: None, tool_call_id: None},
             summary_tokens: 0,
         };
         if !ret.workspace_path.exists() {
@@ -82,7 +82,11 @@ impl SummaryMemory {
         
         let conversation_str = self.format_conversation(to_summarize);
         
-        let prompt_message = Message { role: USER, content: SUMMARY_PROMPT.replace("{conversation}", &conversation_str)};
+        let prompt_message = Message{role: USER, 
+                                              content: SUMMARY_PROMPT.replace("{conversation}", &conversation_str),
+                                              tool_calls: None,
+                                              tool_call_id: None,
+                                             };
         let mut retry = 0;
         let max_retries = 3;
         let summary_text = loop {
@@ -145,7 +149,11 @@ impl SummaryMemory {
     async fn compress_summary(&mut self) {
         let prompt = COMPRESS_SUMMARY_PROMPT.replace("{target_tokens}", &self.summary_budget().to_string())
                                                     .replace("{summary}", &self.summary.content);
-        let prompt_message = Message { role: USER, content: prompt};
+        let prompt_message = Message{role: USER, 
+                                              content: prompt,
+                                              tool_calls: None,
+                                              tool_call_id: None,
+                                             };
         let mut retry = 0;
         let max_retries = 3;
         let compressed_summary = loop {
@@ -270,7 +278,7 @@ mod tests {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
+        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
 
         let mut memory = SummaryMemory::new("test_task", 0.2, summary_model, 100, "./workspace");
         for i in 0..15 {

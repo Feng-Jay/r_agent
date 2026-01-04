@@ -1,25 +1,36 @@
-use llm::memory;
+use anyhow::Context;
+use llm::ToolCall;
+use serde_json::Value;
 use async_trait::async_trait;
-use crate::{agent::base::BaseAgent, 
+use crate::{agent::{base::BaseAgent, tool_agent::ToolAgent}, 
             memory::base::BaseMemory, 
             model::{base::BaseModel, litellm_model::Litellm_Model, schema::{LLMResponse, Message, Role}}, 
-            prompt::agent::*};
+            prompt::agent::*, tool::{self, manager::ToolManager}};
 
-pub struct ReactAgent<M: BaseMemory> {
+
+ pub struct ReactAgent<M: BaseMemory> {
     model: Litellm_Model,
     system_prompt: Message,
     max_iterations: usize,
+    tool_manager: ToolManager,
+    tool_names: Vec<String>,
     memory: M,
 }
 
+
 impl <M: BaseMemory> ReactAgent<M> {
-    pub fn new(model: Litellm_Model, system_prompt: &str, max_iterations: usize, memory: M) -> Self {
+    pub fn new(model: Litellm_Model, system_prompt: &str, max_iterations: usize, tool_manager: ToolManager, memory: M) -> Self {
+        let tool_names = tool_manager.get_tool_names();
+        
         let mut ret = Self {
             model,
             system_prompt: Message::system(system_prompt),
             max_iterations,
+            tool_manager,
+            tool_names: tool_names,
             memory,
         };
+
         ret.system_prompt.content = ret.build_system_prompt(&ret.system_prompt.content);
         ret
     }
@@ -48,6 +59,7 @@ impl <M: BaseMemory> ReactAgent<M> {
     }
 }
 
+
 #[async_trait]
 impl <M: BaseMemory + Send> BaseAgent for ReactAgent<M> {
    
@@ -73,6 +85,7 @@ impl <M: BaseMemory + Send> BaseAgent for ReactAgent<M> {
 
         for i in 0..self.max_iterations {
             let msgs: Vec<&Message> = self.build_messages().collect();
+            tracing::debug!("Current memory: {:?}", self.memory.get_messages().collect::<Vec<&Message>>());
             tracing::debug!("Iteration {}/{}", i + 1, self.max_iterations);
             let response = self.model.call_with_history(msgs).await;
             
@@ -80,33 +93,77 @@ impl <M: BaseMemory + Send> BaseAgent for ReactAgent<M> {
             if self.is_finished(&response){
                 let final_answer = self.extract_final_answer(&response);
                 if let Some(answer) = final_answer {
-                    self.add_message(Message::assistant(&answer)).await;
+                    self.add_message(Message::assistant(&answer, None)).await;
                     tracing::debug!("Final answer extracted: {}", answer);
                     return answer;
                 }
             }
-            // todo: tool calling!!!
+            // no tool calling
+            if (&response).tool_calls.is_none(){
+                self.add_message(Message::assistant(response.content.as_ref().unwrap_or(&"".to_string()), None)).await;
+                tracing::debug!("Response (no tools): {}", response.content.as_ref().unwrap_or(&"".to_string()));
+                continue;
+            }
+            
+            let tool_calls = response.tool_calls.unwrap();
+            let content = response.content.unwrap_or_else(|| "Nothing".to_string());
+            let formatted = self.tool_manager.format_tool_calls(
+                tool_calls.iter().collect()
+            );
+            self.add_message(Message::assistant(&content, Some(tool_calls.clone()))).await;            
+            
+            tracing::debug!("Tool calls: {:?}", formatted);
+            for tc in tool_calls.iter(){
+                let id = &tc.id;
+                let function_name = &tc.function.name;
+                let arguments = &tc.function.arguments;
+                tracing::debug!("Executing tool: {}#{}", id, function_name);
+                let result = self.execute_tool(function_name, arguments).unwrap_or(String::from("No output from tool."));
+                tracing::debug!("Tool result: {}#{:?}", id, result);
+                self.add_message(Message::tool(&result, Some(vec![tc.clone()]), Some(id.clone()))).await;
+            }
+
         }
         return String::from("Reached maximum iterations without a final answer.");
    }  
 }
 
+
+impl <M: BaseMemory + Send> ToolAgent for ReactAgent<M> {
+    fn get_tools_schema(&self) -> Vec<Value> {
+        self.tool_manager.get_schema(&self.tool_names)
+    }
+    fn format_tool_calls(&self, tool_calls: Vec<&ToolCall>) -> Vec<String> {
+        self.tool_manager.format_tool_calls(tool_calls)
+    }
+
+    fn execute_tool(&self, tool_name: &str, arguments: &str) -> Option<String> {
+        let tool = self.tool_manager.get_tool(tool_name)
+                                           .with_context(|| format!("Tool {} not found", tool_name))
+                                           .ok()?;
+        let output = tool.execute(arguments);
+        Some(output)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::{config::config::load_config, tool};
     use super::*;
     #[tokio::test]
     async fn test_react_agent_run() {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
+        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), "");
         let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, summary_model, 8192, "./workspace_test/");
-
+        let tool_manager = ToolManager::new(Vec::new());
         let mut agent = ReactAgent::new(
             litellm_model,
             "You are a React Agent. Use tools to answer user queries.",
             3,
+            tool_manager,
             memory,
         );
 
@@ -121,23 +178,27 @@ mod tests {
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
         
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
+        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), "");
         let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, summary_model, 8192, "./workspace_test/");
+        let tool_manager = ToolManager::new(Vec::new());
         let mut agent1 = ReactAgent::new(
             litellm_model,
             "You are a React Agent.",
             3,
+            tool_manager,
             memory,
         );
 
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), String::from(""));
+        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), "");
         let memory = crate::memory::summary::SummaryMemory::new("test-2", 0.3, summary_model, 8192, "./workspace_test/");
+        let tool_manager = ToolManager::new(Vec::new());
         let mut agent2 = ReactAgent::new(
             litellm_model,
             "You are another React Agent.",
             3,
+            tool_manager,
             memory,
         );
 

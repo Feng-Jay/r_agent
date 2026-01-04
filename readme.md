@@ -7,7 +7,7 @@
 
 - [x] LLM support...
 - [ ] Different LLM backends (OpenAI, Azure, local models, etc.)
-- [ ] Tool Calling: Equip your agents with the ability to utilize external tools.
+- [x] Tool Calling: Equip your agents with the ability to utilize external tools.
 - [x] Memory - Sliding window + auto-summarization strategies for context management
 - [x] ReAct Loop - Standard think → act → observe reasoning cycle
 - [ ] DAG Pipeline - Directed Acyclic Graph workflow orchestration with parallel execution

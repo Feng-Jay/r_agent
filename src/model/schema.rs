@@ -1,9 +1,12 @@
 use std::fmt;
+use llm::ToolCall;
 
 #[derive(Debug)]
 pub struct Message {
     pub role: Role,
     pub content: String,
+    pub tool_calls: Option<Vec<ToolCall>>,
+    pub tool_call_id: Option<String>,
 }
 
 impl fmt::Display for Message {
@@ -17,6 +20,8 @@ impl Message {
         Message {
             role: Role::SYSTEM,
             content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -24,20 +29,26 @@ impl Message {
         Message {
             role: Role::USER,
             content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
-    pub fn assistant(content: &str) -> Self {
+    pub fn assistant(content: &str, tool_calls:Option<Vec<ToolCall>>) -> Self {
         Message {
             role: Role::ASSISTANT,
             content: content.to_string(),
+            tool_calls,
+            tool_call_id: None,
         }
     }
 
-    pub fn tool(content: &str) -> Self {
+    pub fn tool(content: &str, tool_calls:Option<Vec<ToolCall>>, tool_call_id:Option<String>) -> Self {
         Message {
             role: Role::TOOL,
             content: content.to_string(),
+            tool_calls,
+            tool_call_id
         }
     }
 }
@@ -67,6 +78,7 @@ pub struct LLMResponse {
     pub content: Option<String>,
     pub reasoning_content: Option<String>,
     pub usage: Option<Usage>,
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug)]
@@ -75,3 +87,5 @@ pub struct Usage{
     pub completion_tokens: u32,
     pub total_tokens: u32,
 }
+
+
