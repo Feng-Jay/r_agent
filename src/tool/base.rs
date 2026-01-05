@@ -1,7 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{collections::HashMap, fmt::Debug};
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolParameters {
     // rename
     #[serde(rename = "type")]
@@ -10,17 +11,18 @@ pub struct ToolParameters {
     pub reqiured: Vec<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolParametersPropoerty {
     pub type_: String,
     pub description: String,
 }
 
 pub trait Tool: Debug + Send{
-    fn name(&self) -> &str;
-    fn type_(&self) -> &str;
-    fn description(&self) -> &str;
-    fn parameters(&self) -> &ToolParameters;
+    fn load(&self) -> &Value;
+    fn name(&self) -> &str {self.load().get("name").and_then(Value::as_str).unwrap_or("empty_name")}
+    fn type_(&self) -> &str {self.load().get("type").and_then(Value::as_str).unwrap_or("empty_type")}
+    fn description(&self) -> &str {self.load().get("description").and_then(Value::as_str).unwrap_or("empty_description")}
+    fn parameters(&self) -> &Value{ self.load().get("parameters").unwrap_or(&Value::Null) }
     fn init(&mut self);
     fn execute(&self, input: &str) -> String;
 }

@@ -1,33 +1,19 @@
 use r_agent::agent::base::BaseAgent;
 use r_agent::tool::base::Tool;
-use r_agent::tool::base::ToolParameters;
-use tracing_subscriber::{fmt, EnvFilter};
-use r_agent::model::base::BaseModel;
-use r_agent::model::litellm_model::Litellm_Model;
-use r_agent::test_logging;
+use serde_json::Value;
+use serde_json::json;
+use r_agent::model::litellm_model::LitellmModel;
 use r_agent::config::config::*;
 use serde_json;
 
 #[derive(Debug)]
 struct CalculatorTool{
-    parameters: ToolParameters,
+    config: Value
 }
 
 impl Tool for CalculatorTool {
-    fn name(&self) -> &str {
-        "sumOfTwoNumbers"
-    }
-
-    fn type_(&self) -> &str {
-        "function"
-    }
-
-    fn description(&self) -> &str {
-        "A tool to sum two numbers"
-    }
-
-    fn parameters(&self) -> &ToolParameters {
-        &self.parameters
+    fn load(&self) -> &serde_json::Value {
+        &self.config
     }
 
     fn init(&mut self) {
@@ -46,40 +32,37 @@ impl Tool for CalculatorTool {
 #[tokio::main]
 async fn main() {
     let tool = CalculatorTool {
-        parameters: ToolParameters {
-            type_: "object".to_string(),
-            properties: {
-                let mut props = std::collections::HashMap::new();
-                props.insert(
-                    "num1".to_string(),
-                    r_agent::tool::base::ToolParametersPropoerty {
-                        type_: "number".to_string(),
-                        description: "The first number".to_string(),
+        config: json!({
+            "name": "sumOfTwoNumbers",
+            "type": "object",
+            "description": "A tool to calculate the sum of two numbers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "num1": {
+                        "type": "number",
+                        "description": "The first number."
                     },
-                );
-                props.insert(
-                    "num2".to_string(),
-                    r_agent::tool::base::ToolParametersPropoerty {
-                        type_: "number".to_string(),
-                        description: "The second number".to_string(),
-                    },
-                );
-                props
-            },
-            reqiured: vec!["num1".to_string(), "num2".to_string()],
-        },
+                    "num2": {
+                        "type": "number",
+                        "description": "The second number."
+                    }
+                },
+                "required": ["num1", "num2"]
+            }
+        })
     };
 
     let config = load_config(None);
     let model_name = "gpt-4o-mini";
     let model_config = config.models.get(model_name).unwrap();
-    let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
+    let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
     let memory = r_agent::memory::summary::SummaryMemory::new("tool_agent_example", 0.3, summary_model, 8192, "./workspace/");
 
     let system_prompt = "You are a React Agent. Use tools to answer user queries.";
     let tool_manager = r_agent::tool::manager::ToolManager::new(vec![Box::new(tool)]);
     let tools = vec!["sumOfTwoNumbers".to_string()];
-    let agent_model = Litellm_Model::new_with_tools(model_name, model_config.clone(), system_prompt, tool_manager.get_schema(&tools));
+    let agent_model = LitellmModel::new_with_tools(model_name, model_config.clone(), system_prompt, tool_manager.get_schema(&tools));
 
     let mut agent = r_agent::agent::react_agent::ReactAgent::new(
         agent_model,

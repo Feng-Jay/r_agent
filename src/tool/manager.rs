@@ -1,7 +1,5 @@
-use std::{collections::HashMap, sync::{Arc}, vec::Vec};
-use crate::tool::base::{Tool, ToolParameters};
-use async_trait::async_trait;
-use tokio::sync::Mutex;
+use std::{collections::HashMap, vec::Vec};
+use crate::tool::base::{Tool};
 use llm::ToolCall;
 use serde_json::{json, Value};
 
@@ -78,6 +76,9 @@ mod tests {
     struct DummyTool;
     
     impl Tool for DummyTool {
+        fn load(&self) -> &Value {
+            unimplemented!()
+        }
         fn name(&self) -> &str {
             "dummy_tool"
         }
@@ -87,7 +88,7 @@ mod tests {
         fn description(&self) -> &str {
             "A dummy tool for testing"
         }
-        fn parameters(&self) -> &crate::tool::base::ToolParameters {
+        fn parameters(&self) -> &Value {
             unimplemented!()
         }
         fn init(&mut self) {}

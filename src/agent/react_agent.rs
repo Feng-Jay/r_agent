@@ -4,12 +4,12 @@ use serde_json::Value;
 use async_trait::async_trait;
 use crate::{agent::{base::BaseAgent, tool_agent::ToolAgent}, 
             memory::base::BaseMemory, 
-            model::{base::BaseModel, litellm_model::Litellm_Model, schema::{LLMResponse, Message, Role}}, 
-            prompt::agent::*, tool::{self, manager::ToolManager}};
+            model::{base::BaseModel, litellm_model::LitellmModel, schema::{LLMResponse, Message}}, 
+            prompt::agent::*, tool::manager::ToolManager};
 
 
  pub struct ReactAgent<M: BaseMemory> {
-    model: Litellm_Model,
+    model: LitellmModel,
     system_prompt: Message,
     max_iterations: usize,
     tool_manager: ToolManager,
@@ -19,7 +19,7 @@ use crate::{agent::{base::BaseAgent, tool_agent::ToolAgent},
 
 
 impl <M: BaseMemory> ReactAgent<M> {
-    pub fn new(model: Litellm_Model, system_prompt: &str, max_iterations: usize, tool_manager: ToolManager, memory: M) -> Self {
+    pub fn new(model: LitellmModel, system_prompt: &str, max_iterations: usize, tool_manager: ToolManager, memory: M) -> Self {
         let tool_names = tool_manager.get_tool_names();
         
         let mut ret = Self {
@@ -148,15 +148,14 @@ impl <M: BaseMemory + Send> ToolAgent for ReactAgent<M> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config::config::load_config, tool};
     use super::*;
     #[tokio::test]
     async fn test_react_agent_run() {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
+        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
         let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, summary_model, 8192, "./workspace_test/");
         let tool_manager = ToolManager::new(Vec::new());
         let mut agent = ReactAgent::new(
@@ -178,8 +177,8 @@ mod tests {
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
         
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
+        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
         let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, summary_model, 8192, "./workspace_test/");
         let tool_manager = ToolManager::new(Vec::new());
         let mut agent1 = ReactAgent::new(
@@ -190,8 +189,8 @@ mod tests {
             memory,
         );
 
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
-        let litellm_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
+        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
         let memory = crate::memory::summary::SummaryMemory::new("test-2", 0.3, summary_model, 8192, "./workspace_test/");
         let tool_manager = ToolManager::new(Vec::new());
         let mut agent2 = ReactAgent::new(

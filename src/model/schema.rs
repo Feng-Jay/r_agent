@@ -11,7 +11,15 @@ pub struct Message {
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.role, self.content)
+        let tool_calls_str = match &self.tool_calls {
+            Some(calls) => format!("{:?}", calls),
+            None => "None".to_string(),
+        };
+        let tool_call_id_str = match &self.tool_call_id {
+            Some(id) => id.clone(),
+            None => "None".to_string(),
+        };
+        write!(f, "{}: content: {}, tool_calls: {}, tool_call_id: {}", self.role, self.content, tool_calls_str, tool_call_id_str)
     }
 }
 

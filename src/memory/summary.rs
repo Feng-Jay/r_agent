@@ -6,17 +6,18 @@ use std::fs;
 use async_trait::async_trait;
 use tiktoken_rs::{get_bpe_from_model, o200k_base};
 use crate::{memory::base::BaseMemory, 
-            model::{base::BaseModel, litellm_model::Litellm_Model, schema::{Message, Role::*}},
+            model::{base::BaseModel, litellm_model::LitellmModel, schema::{Message, Role::*}},
             prompt::summary::*,};
 
 
 /// Summary memory module
 /// This module provides a memory implementation that will summarize past interactions when the memory limit is reached.
 pub struct SummaryMemory {
+    #[allow(dead_code)]
     task_id: String,
     model_str: String,
     reserve_ratio: f32,
-    summary_model: Litellm_Model,
+    summary_model: LitellmModel,
     max_tokens: usize,
     workspace_path: PathBuf,
     messages: Vec<Message>,
@@ -35,7 +36,7 @@ struct Summary {
 }
 
 impl SummaryMemory {
-    pub fn new(task_id: &str, reserve_ratio: f32, summary_model: Litellm_Model, max_tokens: usize, workspace_path: &str) -> Self {
+    pub fn new(task_id: &str, reserve_ratio: f32, summary_model: LitellmModel, max_tokens: usize, workspace_path: &str) -> Self {
         let mut ret = SummaryMemory {
             task_id: task_id.to_string(),
             model_str: summary_model.model_name.clone(),
@@ -184,7 +185,7 @@ impl SummaryMemory {
                     retry += 1;
                     if retry >= max_retries {
                         tracing::error!("Failed to compress summary after 3 retries. Use half of original summary as compressed summary.");
-                        break self.summary.content.chars().take(self.summary.content.len()/2).collect();;
+                        break self.summary.content.chars().take(self.summary.content.len()/2).collect();
                    }
                 }
             }
@@ -229,14 +230,22 @@ impl SummaryMemory {
         let mut ret = String::new();
         for msg in messages.into_iter() {
             let role = msg.role.to_string();
-            let content = {
+            let mut content = {
                 let mut s = msg.content; // move String out
                 if s.chars().count() > 500 {
                     s = s.chars().take(500).collect::<String>() + "...[truncated]";
                 }
                 s
             };
-            ret.push_str(&format!("{}: {}", role, content));
+            let tool_calls = match msg.tool_calls {
+                Some(calls) => format!("With Tool Calls: {:?}", calls),
+                None => "".to_string(),
+            };
+            let tool_call_id = match msg.tool_call_id {
+                Some(id) => {content = format!("result: {}", content);format!("With Tool Call ID: {}", id) },
+                None => "".to_string(),
+            };
+            ret.push_str(&format!("{}: {} {} {}", role, content, tool_calls, tool_call_id));
         }
         ret
     }
@@ -278,7 +287,7 @@ mod tests {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let summary_model = Litellm_Model::new(model_name, model_config.clone(), "");
+        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
 
         let mut memory = SummaryMemory::new("test_task", 0.2, summary_model, 100, "./workspace");
         for i in 0..15 {

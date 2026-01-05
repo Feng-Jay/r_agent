@@ -1,7 +1,5 @@
 use llm::ToolCall;
-
 use serde_json::Value;
-use async_trait::async_trait;
 
 pub trait ToolAgent {
     fn get_tools_schema(&self) -> Vec<Value>;
