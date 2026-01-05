@@ -13,7 +13,7 @@
 
 ## Features To Implement
 
-- [x] OpenAI (OpenAI Compatiable) backends support...
+- [x] OpenAI (OpenAI Compatible) backends support...
 - [ ] More LLM backends (Azure, local models, etc.)
 - [x] Tool Calling: Equip agents with the ability to utilize self-designed tools
 - [x] Memory - Sliding window + auto-summarization strategies for context management
