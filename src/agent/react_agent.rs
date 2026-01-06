@@ -3,9 +3,10 @@ use llm::ToolCall;
 use serde_json::Value;
 use async_trait::async_trait;
 use crate::{agent::{base::BaseAgent, tool_agent::ToolAgent}, 
-            memory::base::BaseMemory, 
-            model::{base::BaseModel, litellm_model::LitellmModel, schema::{LLMResponse, Message}}, 
-            prompt::agent::*, tool::manager::ToolManager};
+            config::config::Config, memory::base::BaseMemory, 
+            model::{base::BaseModel, litellm_model::LitellmModel, schema::{LLMResponse, Message}},
+            prompt::agent::*, 
+            tool::manager::ToolManager};
 
 
  pub struct ReactAgent<M: BaseMemory> {
@@ -19,19 +20,28 @@ use crate::{agent::{base::BaseAgent, tool_agent::ToolAgent},
 
 
 impl <M: BaseMemory> ReactAgent<M> {
-    pub fn new(model: LitellmModel, system_prompt: &str, max_iterations: usize, tool_manager: ToolManager, memory: M) -> Self {
-        let tool_names = tool_manager.get_tool_names();
-        
+    pub fn new(config: &Config, model_name: &str, system_prompt: &str, max_iterations: usize, tool_manager: ToolManager, memory: M, tool_names: Vec<String>) -> Self {
+        let model_config = config.models.get(model_name).expect(format!("Model {} not found in config", model_name).as_str());
+        let model = LitellmModel::new(model_name, model_config, system_prompt);
+        let tool_schemas = tool_manager.get_schema(&tool_names);
+
         let mut ret = Self {
             model,
             system_prompt: Message::system(system_prompt),
             max_iterations,
             tool_manager,
-            tool_names: tool_names,
+            tool_names,
             memory,
         };
-
         ret.system_prompt.content = ret.build_system_prompt(&ret.system_prompt.content);
+        
+        if tool_schemas.len() > 0 {
+            let model = LitellmModel::new_with_tools(model_name, model_config, &ret.system_prompt.content, tool_schemas);
+            ret.model = model;
+        }else{
+            let model = LitellmModel::new(model_name, model_config, &ret.system_prompt.content);
+            ret.model = model;
+        }
         ret
     }
 
@@ -68,7 +78,7 @@ impl <M: BaseMemory + Send> BaseAgent for ReactAgent<M> {
    } 
    
    fn build_messages(&self) -> impl Iterator<Item =  &Message> {
-        std::iter::once(&self.system_prompt).chain(self.get_history())
+        self.get_history()
    }
 
    fn clear_history(&mut self) {
@@ -80,6 +90,7 @@ impl <M: BaseMemory + Send> BaseAgent for ReactAgent<M> {
    }
 
    async fn run(&mut self, user_prompt: &str) -> String{
+        tracing::debug!("Current memory: {:?}", self.memory.get_messages().collect::<Vec<&Message>>());
         self.add_message(Message::user(user_prompt)).await;
         tracing::debug!("Running ReactAgent with user prompt: {}", user_prompt);
 
@@ -98,15 +109,17 @@ impl <M: BaseMemory + Send> BaseAgent for ReactAgent<M> {
                     return answer;
                 }
             }
+            let content = response.content.as_ref().unwrap_or(&"Nothing".to_string()).to_string();
+            let reasoning = response.reasoning_content.as_ref().unwrap_or(&"Nothing".to_string()).to_string();
+            let content = format!("Content: {} Reasoning:{}", reasoning, content);
             // no tool calling
             if (&response).tool_calls.is_none(){
-                self.add_message(Message::assistant(response.content.as_ref().unwrap_or(&"".to_string()), None)).await;
-                tracing::debug!("Response (no tools): {}", response.content.as_ref().unwrap_or(&"".to_string()));
+                self.add_message(Message::assistant(content.as_str(), None)).await;
+                tracing::debug!("Response (no tools): {}", content.as_str());
                 continue;
             }
             
             let tool_calls = response.tool_calls.unwrap();
-            let content = response.content.unwrap_or_else(|| "Nothing".to_string());
             let formatted = self.tool_manager.format_tool_calls(
                 tool_calls.iter().collect()
             );
@@ -153,17 +166,16 @@ mod tests {
     async fn test_react_agent_run() {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
-        let model_config = config.models.get(model_name).unwrap();
-        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
-        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
-        let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, summary_model, 8192, "./workspace_test/");
+        let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, &config, model_name, "", 8192, "./workspace_test/");
         let tool_manager = ToolManager::new(Vec::new());
         let mut agent = ReactAgent::new(
-            litellm_model,
+            &config,
+            model_name,
             "You are a React Agent. Use tools to answer user queries.",
             3,
             tool_manager,
             memory,
+            Vec::new()
         );
 
         let user_prompt = "Can you summarize the plot of 'Inception' and suggest a related movie?";
@@ -175,30 +187,29 @@ mod tests {
     async fn test_two_react_agents_run() {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
-        let model_config = config.models.get(model_name).unwrap();
-        
-        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
-        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
-        let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, summary_model, 8192, "./workspace_test/");
+
+        let memory = crate::memory::summary::SummaryMemory::new("test-1", 0.3, &config, model_name, "", 8192, "./workspace_test/");
         let tool_manager = ToolManager::new(Vec::new());
         let mut agent1 = ReactAgent::new(
-            litellm_model,
+            &config,
+            model_name,
             "You are a React Agent.",
             3,
             tool_manager,
             memory,
+            Vec::new()
         );
 
-        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
-        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
-        let memory = crate::memory::summary::SummaryMemory::new("test-2", 0.3, summary_model, 8192, "./workspace_test/");
+        let memory = crate::memory::summary::SummaryMemory::new("test-2", 0.3, &config, model_name, "", 8192, "./workspace_test/");
         let tool_manager = ToolManager::new(Vec::new());
         let mut agent2 = ReactAgent::new(
-            litellm_model,
+            &config,
+            model_name,
             "You are another React Agent.",
             3,
             tool_manager,
             memory,
+            Vec::new()
         );
 
         let user_prompt = "Can you summarize some movies about dreams?";

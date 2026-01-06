@@ -5,7 +5,8 @@ use serde::Deserialize;
 use std::fs;
 use async_trait::async_trait;
 use tiktoken_rs::{get_bpe_from_model, o200k_base};
-use crate::{memory::base::BaseMemory, 
+use crate::{memory::base::BaseMemory,
+            config::config::Config,
             model::{base::BaseModel, litellm_model::LitellmModel, schema::{Message, Role::*}},
             prompt::summary::*,};
 
@@ -36,10 +37,13 @@ struct Summary {
 }
 
 impl SummaryMemory {
-    pub fn new(task_id: &str, reserve_ratio: f32, summary_model: LitellmModel, max_tokens: usize, workspace_path: &str) -> Self {
+    pub fn new(task_id: &str, reserve_ratio: f32, config: &Config, model_name: &str, system_prompt: &str, max_tokens: usize, workspace_path: &str) -> Self {
+        let model_config = config.models.get(model_name).expect(format!("Model {} not found in config", model_name).as_str());
+        let summary_model = LitellmModel::new(model_name, model_config, system_prompt);
+        
         let mut ret = SummaryMemory {
             task_id: task_id.to_string(),
-            model_str: summary_model.model_name.clone(),
+            model_str: model_name.to_string(),
             reserve_ratio,
             summary_model: summary_model,
             max_tokens,
@@ -49,6 +53,7 @@ impl SummaryMemory {
             summary: Message{ role: SYSTEM, content: String::new(), tool_calls: None, tool_call_id: None},
             summary_tokens: 0,
         };
+        
         if !ret.workspace_path.exists() {
             fs::create_dir_all(&ret.workspace_path).with_context(|| format!("Failed to create workspace directory: {:?}", &ret.workspace_path)).unwrap();
         }
@@ -245,7 +250,7 @@ impl SummaryMemory {
                 Some(id) => {content = format!("result: {}", content);format!("With Tool Call ID: {}", id) },
                 None => "".to_string(),
             };
-            ret.push_str(&format!("{}: {} {} {}", role, content, tool_calls, tool_call_id));
+            ret.push_str(&format!("{}: content:{} tool_calls:{} tool_call_id:{}\n", role, content, tool_calls, tool_call_id));
         }
         ret
     }
@@ -265,7 +270,12 @@ impl BaseMemory for SummaryMemory {
     }
 
     fn get_messages(&self) -> impl Iterator<Item = &Message> {
-        std::iter::once(&self.summary).chain(self.messages.iter())
+        let summary: Option<&Message> = if self.summary.content.is_empty() {
+            None
+        } else {
+            Some(&self.summary)
+        };
+        summary.into_iter().chain(self.messages.iter())
     }
 
     fn token_count(&self) -> usize {
@@ -286,10 +296,7 @@ mod tests {
     async fn test_summary_memory() {
         let config = crate::config::config::load_config(None);
         let model_name = "gpt-4o-mini";
-        let model_config = config.models.get(model_name).unwrap();
-        let summary_model = LitellmModel::new(model_name, model_config.clone(), "");
-
-        let mut memory = SummaryMemory::new("test_task", 0.2, summary_model, 100, "./workspace");
+        let mut memory = SummaryMemory::new("test_task", 0.2, &config, model_name, "", 100, "./workspace");
         for i in 0..15 {
             let content = format!("This is test message number {}. {}", i, "A".repeat(50));
             memory.add(Message::user(&content)).await;

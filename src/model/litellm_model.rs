@@ -9,13 +9,13 @@ use crate::{config::config::{ModelConfig},
 
 pub struct LitellmModel{
     pub model_name: String,
-    #[allow(dead_code)]
-    config: ModelConfig,
-    llm: Box<dyn LLMProvider>
+    llm: Box<dyn LLMProvider>,
+    cost_per_input_token: f64,
+    cost_per_output_token: f64,
 }
 
 impl LitellmModel {
-    pub fn new(model_name:&str, settings: ModelConfig, system_prompt: &str) -> Self {
+    pub fn new(model_name:&str, settings: &ModelConfig, system_prompt: &str) -> Self {
         let api_key = settings.api_key.as_str();
 
         let mut llm_builder = LLMBuilder::new()
@@ -45,12 +45,13 @@ impl LitellmModel {
                                 .with_context(|| format!("Failed to build LLM model: {}", model_name)).unwrap();
         LitellmModel {
             model_name: model_name.to_string(),
-            config: settings,
-            llm: llm
+            llm: llm,
+            cost_per_input_token: if let Some(cost) = &settings.cost { cost.input_cost_per_token } else { 0.0 },
+            cost_per_output_token: if let Some(cost) = &settings.cost { cost.output_cost_per_token } else { 0.0 },
         }
     }
 
-    pub fn new_with_tools(model_name:&str, settings: ModelConfig, system_prompt: &str, functions: Vec<Value>) -> Self {
+    pub fn new_with_tools(model_name:&str, settings: &ModelConfig, system_prompt: &str, functions: Vec<Value>) -> Self {
         let api_key = settings.api_key.as_str();
 
         let mut llm_builder = LLMBuilder::new()
@@ -89,8 +90,9 @@ impl LitellmModel {
                                 .with_context(|| format!("Failed to build LLM model: {}", model_name)).unwrap();
         LitellmModel {
             model_name: model_name.to_string(),
-            config: settings,
-            llm: llm
+            llm: llm,
+            cost_per_input_token: if let Some(cost) = &settings.cost { cost.input_cost_per_token } else { 0.0 },
+            cost_per_output_token: if let Some(cost) = &settings.cost { cost.output_cost_per_token } else { 0.0 },
         }
     }
 
@@ -129,7 +131,7 @@ impl LitellmModel {
                 tracing::debug!("LLM Response: {:?}", response.text());
                 tracing::debug!("Usage: {:?}", response.usage());
                 tracing::debug!("tool_calls: {:?}", response.tool_calls());
-                LLMResponse {
+                let ret = LLMResponse {
                     content: response.text(),
                     reasoning_content: response.thinking(),
                     usage: if let Some(usage) = response.usage() {
@@ -137,12 +139,15 @@ impl LitellmModel {
                             prompt_tokens: usage.prompt_tokens,
                             completion_tokens: usage.completion_tokens,
                             total_tokens: usage.total_tokens,
+                            cost_usd: (self.cost_per_input_token * usage.prompt_tokens as f64 + self.cost_per_output_token * usage.completion_tokens as f64),
                         })
                     } else {
                         None
                     },
                     tool_calls: response.tool_calls()
-                }
+                };
+                tracing::info!("{}", ret);
+                ret
             },
             Err(e) => {
                 tracing::error!("Error during LLM call: {}", e);
@@ -162,6 +167,7 @@ impl BaseModel for LitellmModel {
     async fn call(&self, user_prompt: &Message) -> LLMResponse {
         let mut history = Vec::new();
         history.push(user_prompt);
+        tracing::info!("Calling LLM with prompt: {}", user_prompt.content);
         self.call_with_history(history).await
     }
 
@@ -176,8 +182,8 @@ impl BaseModel for LitellmModel {
         }
         // let user_msg = self.build_message(&Role::USER, user_prompt);
         // messages.push(user_msg);
-        let llm_response = self._do_call(&messages).await;
-        llm_response
+        tracing::info!("Calling LLM with messages: {:#?}", messages);
+        self._do_call(&messages).await
     }
 }
 
@@ -194,7 +200,7 @@ mod tests {
         let config = load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
+        let litellm_model = LitellmModel::new(model_name, model_config, "");
         let messages = vec![
             ChatMessage::user().content("You are a helpful assistant.").build(),
             ChatMessage::user().content("Hello, how about the weather of NY today").build(),
@@ -208,7 +214,7 @@ mod tests {
         let config = load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
+        let litellm_model = LitellmModel::new(model_name, model_config, "");
         let user_prompt = "Hello, how about the weather of NY today";
         let out = litellm_model.call(&Message::user(user_prompt)).await;
         println!("\nOutput: {:?}", out);
@@ -219,7 +225,7 @@ mod tests {
         let config = load_config(None);
         let model_name = "gpt-4o-mini";
         let model_config = config.models.get(model_name).unwrap();
-        let litellm_model = LitellmModel::new(model_name, model_config.clone(), "");
+        let litellm_model = LitellmModel::new(model_name, model_config, "");
         let history = vec![
             Message::user("Hello, how about the weather of NY today"),
             Message::assistant("The weather in NY today is sunny with a high of 75°F.", None),
@@ -255,7 +261,7 @@ mod tests {
                 }
             })
         ];
-        let litellm_model = LitellmModel::new_with_tools(model_name, model_config.clone(), "", functions);
+        let litellm_model = LitellmModel::new_with_tools(model_name, model_config, "", functions);
         let user_prompt = "What's the weather like in Boston?";
         let out = litellm_model.call(&Message::user(user_prompt)).await;
         let output = out.content.unwrap_or("No content".to_string());
@@ -296,7 +302,7 @@ mod tests {
                 }
             })
         ];
-        let litellm_model = LitellmModel::new_with_tools(model_name, model_config.clone(), "", functions);
+        let litellm_model = LitellmModel::new_with_tools(model_name, model_config, "", functions);
         let user_prompt = "What's the sum of 1000 and 10000?";
         tracing::debug!("User prompt: {}", user_prompt);
         let out = litellm_model.call(&Message::user(user_prompt)).await;

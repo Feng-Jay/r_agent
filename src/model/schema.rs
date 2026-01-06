@@ -19,7 +19,7 @@ impl fmt::Display for Message {
             Some(id) => id.clone(),
             None => "None".to_string(),
         };
-        write!(f, "{}: content: {}, tool_calls: {}, tool_call_id: {}", self.role, self.content, tool_calls_str, tool_call_id_str)
+        write!(f, "{}: content: {}, tool_calls: {}, tool_call_id: {}\n", self.role, self.content, tool_calls_str, tool_call_id_str)
     }
 }
 
@@ -89,11 +89,46 @@ pub struct LLMResponse {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
+impl fmt::Display for LLMResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut write_str = String::from("LLM Response:\n");
+        if let Some(content) = &self.content {
+            write_str.push_str(&format!("Content: {}\n", content));
+        } else {
+            write_str.push_str("Content: None\n");
+        }
+        if let Some(reasoning_content) = &self.reasoning_content {
+            write_str.push_str(&format!("Reasoning Content: {}\n", reasoning_content));
+        } else {
+            write_str.push_str("Reasoning Content: None\n");
+        }
+        if let Some(usage) = &self.usage {
+            write_str.push_str(&format!("Usage: {}\n", usage));
+        } else {
+            write_str.push_str("Usage: None\n");
+        }
+        if let Some(tool_calls) = &self.tool_calls {
+            write_str.push_str(&format!("Tool Calls: {:#?}\n", tool_calls));
+        } else {
+            write_str.push_str("Tool Calls: None\n");
+        }
+        write!(f, "{}", write_str)
+            
+    }
+}
+
 #[derive(Debug)]
 pub struct Usage{
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    pub cost_usd: f64,
+}
+
+impl fmt::Display for Usage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "prompt_tokens: {}, completion_tokens: {}, total_tokens: {}, cost_usd: {}", self.prompt_tokens, self.completion_tokens, self.total_tokens, self.cost_usd)
+    }
 }
 
 
