@@ -113,6 +113,6 @@ Contributions are welcome! Please open issues and submit pull requests for bug f
 
 Thanks to the following open source projects:
 
-- [EasyAgnet](https://github.com/SNHuan/EasyAgent)
+- [EasyAgent](https://github.com/SNHuan/EasyAgent)
 - [llm](https://github.com/graniet/llm)
 - [tiktoken-rs](https://github.com/zurawiki/tiktoken-rs)
